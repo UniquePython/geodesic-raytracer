@@ -4,8 +4,8 @@
 
 #include <raylib.h>
 
-#define WIDTH 300  // Window width
-#define HEIGHT 300 // Window height
+#define WIDTH 900  // Window width
+#define HEIGHT 900 // Window height
 
 typedef struct ray_state
 {
@@ -27,7 +27,7 @@ typedef enum outcome
 #define FOV (PI / 3.0) // 60 deg
 
 #define DLAMBDA 0.1
-#define MAX_STEPS 1000
+#define MAX_STEPS 10000
 
 RayState derivatives(RayState currState, double angularMomentum)
 {
@@ -118,39 +118,35 @@ int main(void)
     InitWindow(WIDTH, HEIGHT, "Geodesic Ray Tracing in Curved Spacetime");
     SetTargetFPS(GetMonitorRefreshRate(GetCurrentMonitor()));
 
-    bool rendered = false;
     RenderTexture2D target = LoadRenderTexture(WIDTH, HEIGHT);
+
+    int currentRow = 0;
 
     while (!WindowShouldClose())
     {
-        if (!rendered)
+        if (currentRow < HEIGHT)
         {
             BeginTextureMode(target);
-
-            for (int y = 0; y < HEIGHT; y++)
+            for (int x = 0; x < WIDTH; x++)
             {
-                for (int x = 0; x < WIDTH; x++)
-                {
-                    double screenX = (x - WIDTH / 2.0) / WIDTH;
-                    double screenY = (y - HEIGHT / 2.0) / HEIGHT;
-                    double alpha = sqrt(screenX * screenX + screenY * screenY) * FOV;
-                    double angularMomentum = R_CAM * sin(alpha);
+                double screenX = (x - WIDTH / 2.0) / WIDTH;
+                double screenY = (currentRow - HEIGHT / 2.0) / HEIGHT;
+                double alpha = sqrt(screenX * screenX + screenY * screenY) * FOV;
+                double angularMomentum = R_CAM * sin(alpha);
 
-                    RayState initial = {
-                        .radius = R_CAM,
-                        .angle = 0.0,
-                        .dRadius = -1.0,
-                    };
+                RayState initial = {
+                    .radius = R_CAM,
+                    .angle = 0.0,
+                    .dRadius = -1.0,
+                };
 
-                    Outcome outcome = trace_ray(initial, angularMomentum, DLAMBDA, MAX_STEPS);
+                Outcome outcome = trace_ray(initial, angularMomentum, DLAMBDA, MAX_STEPS);
 
-                    Color color = (outcome == CAPTURED) ? BLACK : WHITE;
-                    DrawPixel(x, y, color);
-                }
+                Color color = (outcome == CAPTURED) ? BLACK : WHITE;
+                DrawPixel(x, currentRow, color);
             }
-
             EndTextureMode();
-            rendered = true;
+            currentRow++;
         }
 
         BeginDrawing();
