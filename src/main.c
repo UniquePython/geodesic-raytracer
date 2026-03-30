@@ -19,7 +19,8 @@ typedef struct ray_state
 typedef enum outcome
 {
     CAPTURED, // Ray fell inside black hole
-    ESCAPED   // Ray escaped black hole
+    ESCAPED,  // Ray escaped black hole
+    HIT_DISK, // Hit accretion disk
 } Outcome;
 
 typedef struct trace_result
@@ -35,10 +36,10 @@ typedef struct trace_result
 #define FOV (PI / 3.0)       // 60 deg
 #define CAM_INCLINATION 20.0 // 20 deg
 
-#define DLAMBDA 0.1
-#define MAX_STEPS 10000
+#define DLAMBDA 0.05
+#define MAX_STEPS 1000000
 
-RayState derivatives(RayState currState, double angularMomentum)
+RayState derivatives(RayState currState, double angularMomentum, double carterConst)
 {
     RayState derivative;
 
@@ -49,8 +50,9 @@ RayState derivatives(RayState currState, double angularMomentum)
 
     derivative.angle = angularMomentum / radiusSquared;
 
-    double outwardCentrifugalPush = angularMomentumSquared / (radiusSquared * currState.radius);
-    double inwardPull = 3 * angularMomentumSquared * RS / (2 * radiusSquared * radiusSquared);
+    double effectiveLSq = angularMomentumSquared + carterConst;
+    double outwardCentrifugalPush = effectiveLSq / (radiusSquared * currState.radius);
+    double inwardPull = 3 * effectiveLSq * RS / (2 * radiusSquared * radiusSquared);
 
     derivative.dRadius = outwardCentrifugalPush - inwardPull;
 
@@ -67,9 +69,9 @@ RayState derivatives(RayState currState, double angularMomentum)
     return derivative;
 }
 
-RayState rk4_step(RayState currState, double angularMomentum, double dLambda)
+RayState rk4_step(RayState currState, double angularMomentum, double carterConst, double dLambda)
 {
-    RayState k1 = derivatives(currState, angularMomentum);
+    RayState k1 = derivatives(currState, angularMomentum, carterConst);
 
     // --- K2 ------------>
 
@@ -77,9 +79,11 @@ RayState rk4_step(RayState currState, double angularMomentum, double dLambda)
         .radius = currState.radius + (k1.radius * dLambda / 2),
         .dRadius = currState.dRadius + (k1.dRadius * dLambda / 2),
         .angle = currState.angle + (k1.angle * dLambda / 2),
+        .theta = currState.theta + (k1.theta * dLambda / 2),
+        .dTheta = currState.dTheta + (k1.dTheta * dLambda / 2),
     };
 
-    RayState k2 = derivatives(k2Input, angularMomentum);
+    RayState k2 = derivatives(k2Input, angularMomentum, carterConst);
 
     // --- K3 ------------>
 
@@ -87,9 +91,11 @@ RayState rk4_step(RayState currState, double angularMomentum, double dLambda)
         .radius = currState.radius + (k2.radius * dLambda / 2),
         .dRadius = currState.dRadius + (k2.dRadius * dLambda / 2),
         .angle = currState.angle + (k2.angle * dLambda / 2),
+        .theta = currState.theta + (k2.theta * dLambda / 2),
+        .dTheta = currState.dTheta + (k2.dTheta * dLambda / 2),
     };
 
-    RayState k3 = derivatives(k3Input, angularMomentum);
+    RayState k3 = derivatives(k3Input, angularMomentum, carterConst);
 
     // --- K4 ------------>
 
@@ -97,9 +103,11 @@ RayState rk4_step(RayState currState, double angularMomentum, double dLambda)
         .radius = currState.radius + (k3.radius * dLambda),
         .dRadius = currState.dRadius + (k3.dRadius * dLambda),
         .angle = currState.angle + (k3.angle * dLambda),
+        .theta = currState.theta + (k3.theta * dLambda),
+        .dTheta = currState.dTheta + (k3.dTheta * dLambda),
     };
 
-    RayState k4 = derivatives(k4Input, angularMomentum);
+    RayState k4 = derivatives(k4Input, angularMomentum, carterConst);
 
     // --- Final Blend ------------>
 
@@ -107,18 +115,22 @@ RayState rk4_step(RayState currState, double angularMomentum, double dLambda)
         .radius = currState.radius + (dLambda / 6) * (k1.radius + 2 * k2.radius + 2 * k3.radius + k4.radius),
         .angle = currState.angle + (dLambda / 6) * (k1.angle + 2 * k2.angle + 2 * k3.angle + k4.angle),
         .dRadius = currState.dRadius + (dLambda / 6) * (k1.dRadius + 2 * k2.dRadius + 2 * k3.dRadius + k4.dRadius),
+        .theta = currState.theta + (dLambda / 6) * (k1.theta + 2 * k2.theta + 2 * k3.theta + k4.theta),
+        .dTheta = currState.dTheta + (dLambda / 6) * (k1.dTheta + 2 * k2.dTheta + 2 * k3.dTheta + k4.dTheta),
     };
 
     return result;
 }
 
-TraceResult trace_ray(RayState initial, double angularMomentum, double dLambda, int maxSteps)
+TraceResult trace_ray(RayState initial, double angularMomentum, double carterConst, double dLambda, int maxSteps)
 {
     RayState state = initial;
+    RayState prevState = initial;
 
     for (int stepsTaken = 0; stepsTaken < maxSteps; stepsTaken++)
     {
-        state = rk4_step(state, angularMomentum, dLambda);
+        prevState = state;
+        state = rk4_step(state, angularMomentum, carterConst, dLambda);
 
         bool crossedEventHorizon = state.radius <= RS;
         bool escapedToInfinity = state.radius > R_MAX;
@@ -139,6 +151,18 @@ TraceResult trace_ray(RayState initial, double angularMomentum, double dLambda, 
                 .finalState = state,
             };
 
+            return result;
+        }
+
+        bool crossedEquatorialPlane = (prevState.theta - PI / 2) * (state.theta - PI / 2) < 0;
+        bool inDiskRegion = state.radius >= 3.0 * RS && state.radius <= 15.0 * RS;
+
+        if (crossedEquatorialPlane && inDiskRegion)
+        {
+            TraceResult result = {
+                .outcome = HIT_DISK,
+                .finalState = state,
+            };
             return result;
         }
     }
@@ -176,24 +200,30 @@ int main(void)
             {
                 double screenX = (x - WIDTH / 2.0) / WIDTH;
                 double screenY = (currentRow - HEIGHT / 2.0) / HEIGHT;
-                double alpha = sqrt(screenX * screenX + screenY * screenY) * FOV;
-                double angularMomentum = R_CAM * sin(alpha);
+
+                double ax = screenX * FOV;
+                double ay = screenY * FOV;
+                double angularMomentum = R_CAM * sin(ax);
 
                 double cameraInclination = CAM_INCLINATION * (PI / 180.0);
 
                 RayState initial = {
                     .radius = R_CAM,
                     .angle = 0.0,
-                    .theta = (PI / 2.0) - cameraInclination + (screenY * FOV),
+                    .theta = (PI / 2.0) - cameraInclination,
                     .dRadius = -1.0,
-                    .dTheta = 0.0,
+                    .dTheta = sin(ay) / R_CAM,
                 };
 
-                TraceResult result = trace_ray(initial, angularMomentum, DLAMBDA, MAX_STEPS);
+                double carterConst = R_CAM * R_CAM * R_CAM * R_CAM * (initial.dTheta * initial.dTheta);
+
+                TraceResult result = trace_ray(initial, angularMomentum, carterConst, DLAMBDA, MAX_STEPS);
 
                 Color color;
                 if (result.outcome == CAPTURED)
                     color = BLACK;
+                else if (result.outcome == HIT_DISK)
+                    color = RED;
                 else
                 {
                     double u = fmod(result.finalState.angle, 2 * PI) / (2 * PI);
