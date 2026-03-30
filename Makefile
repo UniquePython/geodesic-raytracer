@@ -1,13 +1,13 @@
 CC      = gcc
 CFLAGS  = -Wall -Wextra -Wshadow -Wdouble-promotion -Wformat=2 -Wundef -Wconversion -std=c11 -I include
-LIBS    =
+LIBS    = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 
 SRC_DIR   = src
 BUILD_DIR = build
 
 SRCS   = $(wildcard $(SRC_DIR)/*.c)
 OBJS   = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS))
-TARGET = $(BUILD_DIR)/geodesic-raytracer
+TARGET = $(BUILD_DIR)/grt
 
 .PHONY: all clean run
 

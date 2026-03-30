@@ -1,14 +1,20 @@
 #include <stdbool.h>
 #include <stddef.h>
+#include <math.h>
 
-typedef struct
+#include <raylib.h>
+
+#define WIDTH 300  // Window width
+#define HEIGHT 300 // Window height
+
+typedef struct ray_state
 {
     double radius;  // Radius of ray in polar coordinates
     double angle;   // Angle of ray in polar coordinates
     double dRadius; // Rate of change of radius
 } RayState;         // Rate of change of angle omitted - derived as `L/r^2` where L is angular momentum
 
-typedef enum
+typedef enum outcome
 {
     CAPTURED, // Ray fell inside black hole
     ESCAPED   // Ray escaped black hole
@@ -17,6 +23,11 @@ typedef enum
 #define RS 1.0     // Schwarzschild radius, normalized to 1
 #define R_CAM 20.0 // Camera distance from black hole
 #define R_MAX 50.0 // Stands for infinity
+
+#define FOV (PI / 3.0) // 60 deg
+
+#define DLAMBDA 0.1
+#define MAX_STEPS 1000
 
 RayState derivatives(RayState currState, double angularMomentum)
 {
@@ -100,4 +111,54 @@ Outcome trace_ray(RayState initial, double angularMomentum, double dLambda, int 
     }
 
     return ESCAPED;
+}
+
+int main(void)
+{
+    InitWindow(WIDTH, HEIGHT, "Geodesic Ray Tracing in Curved Spacetime");
+    SetTargetFPS(GetMonitorRefreshRate(GetCurrentMonitor()));
+
+    bool rendered = false;
+    RenderTexture2D target = LoadRenderTexture(WIDTH, HEIGHT);
+
+    while (!WindowShouldClose())
+    {
+        if (!rendered)
+        {
+            BeginTextureMode(target);
+
+            for (int y = 0; y < HEIGHT; y++)
+            {
+                for (int x = 0; x < WIDTH; x++)
+                {
+                    double screenX = (x - WIDTH / 2.0) / WIDTH;
+                    double screenY = (y - HEIGHT / 2.0) / HEIGHT;
+                    double alpha = sqrt(screenX * screenX + screenY * screenY) * FOV;
+                    double angularMomentum = R_CAM * sin(alpha);
+
+                    RayState initial = {
+                        .radius = R_CAM,
+                        .angle = 0.0,
+                        .dRadius = -1.0,
+                    };
+
+                    Outcome outcome = trace_ray(initial, angularMomentum, DLAMBDA, MAX_STEPS);
+
+                    Color color = (outcome == CAPTURED) ? BLACK : WHITE;
+                    DrawPixel(x, y, color);
+                }
+            }
+
+            EndTextureMode();
+            rendered = true;
+        }
+
+        BeginDrawing();
+        DrawTextureRec(target.texture, (Rectangle){0, 0, WIDTH, -HEIGHT}, (Vector2){0, 0}, WHITE);
+        EndDrawing();
+    }
+
+    CloseWindow();
+
+    return 0;
 }
