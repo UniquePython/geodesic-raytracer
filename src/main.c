@@ -143,7 +143,11 @@ TraceResult trace_ray(RayState initial, double angularMomentum, double carterCon
     {
         prevState = state;
 
-        double adaptiveLambda = dLambda * fmin(1.0, (state.radius - RS) / (5.0 * RS));
+        double distToHorizon = state.radius - RS;
+        double distToPhotonSphere = fabs(state.radius - 1.5 * RS);
+        double minDist = fmin(distToHorizon, distToPhotonSphere);
+
+        double adaptiveLambda = dLambda * fmin(1.0, minDist / (3.0 * RS));
         adaptiveLambda = fmax(0.05, adaptiveLambda);
 
         state = rk4_step(state, angularMomentum, carterConst, adaptiveLambda);
