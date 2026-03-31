@@ -174,9 +174,19 @@ TraceResult trace_ray(RayState initial, double angularMomentum, double carterCon
 
         if (crossedEquatorialPlane && inDiskRegion)
         {
+            double t = (PI / 2.0 - prevState.theta) / (state.theta - prevState.theta);
+
+            RayState interpolated = {
+                .radius = prevState.radius + t * (state.radius - prevState.radius),
+                .angle = prevState.angle + t * (state.angle - prevState.angle),
+                .theta = PI / 2.0,
+                .dRadius = prevState.dRadius + t * (state.dRadius - prevState.dRadius),
+                .dTheta = prevState.dTheta + t * (state.dTheta - prevState.dTheta),
+            };
+
             TraceResult result = {
                 .outcome = HIT_DISK,
-                .finalState = state,
+                .finalState = interpolated,
             };
             return result;
         }
