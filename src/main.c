@@ -272,7 +272,7 @@ void *render_rows(void *arg)
                     diskColor = (Color){(unsigned char)(255 - s * 155), (unsigned char)(70 - s * 70), 0, 255};
                 }
 
-                double brightness = 1.0 / pow(r, 0.5);
+                double brightness = 1.0 / pow(r, 2);
                 brightness = fmax(0.1, fmin(1.0, brightness));
 
                 double redshiftFactor = sqrt(1.0 - RS / r);
@@ -281,6 +281,21 @@ void *render_rows(void *arg)
                 diskColor.r = (unsigned char)(diskColor.r * redshiftFactor * brightness);
                 diskColor.g = (unsigned char)(diskColor.g * redshiftFactor * brightness);
                 diskColor.b = (unsigned char)(diskColor.b * redshiftFactor * brightness);
+
+                // orbital velocity at this radius
+                double orbitalVelocity = sqrt(RS / (2.0 * r));
+
+                // cos(phi) encodes which side of disk - positive angle = approaching side
+                double cosPhi = cos(result.finalState.angle);
+
+                // relativistic doppler boost factor
+                double dopplerFactor = 1.0 / (1.0 - orbitalVelocity * cosPhi);
+                dopplerFactor = pow(dopplerFactor, 4.0);
+                dopplerFactor = fmax(0.1, fmin(10.0, dopplerFactor)); // clamp against extremes
+
+                diskColor.r = (unsigned char)fmin(255, diskColor.r * dopplerFactor);
+                diskColor.g = (unsigned char)fmin(255, diskColor.g * dopplerFactor);
+                diskColor.b = (unsigned char)fmin(255, diskColor.b * dopplerFactor);
 
                 color = diskColor;
             }
