@@ -272,7 +272,7 @@ void *render_rows(void *arg)
                     diskColor = (Color){(unsigned char)(255 - s * 155), (unsigned char)(70 - s * 70), 0, 255};
                 }
 
-                double brightness = 1.0 / pow(r, 2);
+                double brightness = 1.0 / pow(r, 0.75);
                 brightness = fmax(0.1, fmin(1.0, brightness));
 
                 double redshiftFactor = sqrt(1.0 - RS / r);
