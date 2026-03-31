@@ -36,8 +36,8 @@ typedef struct trace_result
 #define FOV (PI / 3.0)       // 60 deg
 #define CAM_INCLINATION 20.0 // 20 deg
 
-#define DLAMBDA 0.05
-#define MAX_STEPS 1000000
+#define DLAMBDA 0.1
+#define MAX_STEPS 10000
 
 RayState derivatives(RayState currState, double angularMomentum, double carterConst)
 {
@@ -226,7 +226,57 @@ int main(void)
                 if (result.outcome == CAPTURED)
                     color = BLACK;
                 else if (result.outcome == HIT_DISK)
-                    color = RED;
+                {
+                    double r = result.finalState.radius;
+                    double innerEdge = 3.0 * RS;
+                    double outerEdge = 15.0 * RS;
+
+                    // normalized 0 (inner, hot) to 1 (outer, cool)
+                    double t = (r - innerEdge) / (outerEdge - innerEdge);
+                    t = fmax(0.0, fmin(1.0, t)); // clamp
+
+                    // heat gradient: white-blue -> yellow -> orange -> dim red
+                    Color diskColor;
+                    if (t < 0.25)
+                    {
+                        // white-blue to yellow
+                        double s = t / 0.25;
+                        diskColor = (Color){
+                            (unsigned char)(255),
+                            (unsigned char)(255 - s * 55),
+                            (unsigned char)(255 - s * 255),
+                            255};
+                    }
+                    else if (t < 0.6)
+                    {
+                        // yellow to orange
+                        double s = (t - 0.25) / 0.35;
+                        diskColor = (Color){
+                            (unsigned char)(255),
+                            (unsigned char)(200 - s * 130),
+                            0,
+                            255};
+                    }
+                    else
+                    {
+                        // orange to dim red
+                        double s = (t - 0.6) / 0.4;
+                        diskColor = (Color){
+                            (unsigned char)(255 - s * 155),
+                            (unsigned char)(70 - s * 70),
+                            0,
+                            255};
+                    }
+
+                    // brightness falls off sharply with radius at the rate of 1/sqrt(r)
+                    double brightness = pow(innerEdge / r, 0.5);
+                    brightness = fmax(0.1, fmin(1.0, brightness));
+
+                    diskColor.r = (unsigned char)(diskColor.r * brightness);
+                    diskColor.g = (unsigned char)(diskColor.g * brightness);
+                    diskColor.b = (unsigned char)(diskColor.b * brightness);
+                    color = diskColor;
+                }
                 else
                 {
                     double u = fmod(result.finalState.angle, 2 * PI) / (2 * PI);
