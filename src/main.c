@@ -285,10 +285,11 @@ void *render_rows(void *arg)
                 // orbital velocity at this radius
                 double orbitalVelocity = sqrt(RS / (2.0 * r));
 
-                // cos(phi) encodes which side of disk - positive angle = approaching side
-                double cosPhi = cos(result.finalState.angle);
+                double hitAngle = fmod(result.finalState.angle, 2.0 * PI);
+                if (hitAngle > PI)
+                    hitAngle -= 2.0 * PI;
+                double cosPhi = cos(hitAngle);
 
-                // relativistic doppler boost factor
                 double dopplerFactor = 1.0 / (1.0 - orbitalVelocity * cosPhi);
                 dopplerFactor = pow(dopplerFactor, 4.0);
                 dopplerFactor = fmax(0.1, fmin(10.0, dopplerFactor)); // clamp against extremes
