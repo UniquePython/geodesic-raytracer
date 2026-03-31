@@ -288,11 +288,13 @@ void *render_rows(void *arg)
                 double hitAngle = fmod(result.finalState.angle, 2.0 * PI);
                 if (hitAngle > PI)
                     hitAngle -= 2.0 * PI;
-                double cosPhi = cos(hitAngle);
+                if (hitAngle < -PI)
+                    hitAngle += 2.0 * PI;
+                double sinPhi = sin(hitAngle);
 
-                double dopplerFactor = 1.0 / (1.0 - orbitalVelocity * cosPhi);
+                double dopplerFactor = 1.0 / (1.0 - orbitalVelocity * sinPhi);
                 dopplerFactor = pow(dopplerFactor, 4.0);
-                dopplerFactor = fmax(0.1, fmin(10.0, dopplerFactor)); // clamp against extremes
+                dopplerFactor = fmax(0.1, fmin(50.0, dopplerFactor)); // clamp against extremes
 
                 diskColor.r = (unsigned char)fmin(255, diskColor.r * dopplerFactor);
                 diskColor.g = (unsigned char)fmin(255, diskColor.g * dopplerFactor);
