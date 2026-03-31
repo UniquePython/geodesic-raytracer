@@ -42,11 +42,11 @@ typedef struct trace_result
 } TraceResult;
 
 #define RS 1.0     // Schwarzschild radius, normalized to 1
-#define R_CAM 20.0 // Camera distance from black hole
+#define R_CAM 30.0 // Camera distance from black hole
 #define R_MAX 50.0 // Stands for infinity
 
 #define FOV (PI / 3.0)       // 60 deg
-#define CAM_INCLINATION 20.0 // 20 deg
+#define CAM_INCLINATION 30.0 // 30 deg
 
 #define DLAMBDA 0.1
 #define MAX_STEPS 10000
@@ -144,7 +144,8 @@ TraceResult trace_ray(RayState initial, double angularMomentum, double carterCon
         prevState = state;
 
         double adaptiveLambda = dLambda * fmin(1.0, (state.radius - RS) / (5.0 * RS));
-        adaptiveLambda = fmax(0.01, adaptiveLambda);
+        adaptiveLambda = fmax(0.05, adaptiveLambda);
+
         state = rk4_step(state, angularMomentum, carterConst, adaptiveLambda);
 
         bool crossedEventHorizon = state.radius <= RS;
@@ -227,7 +228,12 @@ void *render_rows(void *arg)
 
             double sinTheta = sin(initial.theta);
             double cosTheta = cos(initial.theta);
-            double carterConst = R_CAM * R_CAM * R_CAM * R_CAM * (initial.dTheta * initial.dTheta) + (cosTheta * cosTheta) / (sinTheta * sinTheta) * angularMomentum * angularMomentum;
+
+            double carterConst;
+            if (fabs(sinTheta) < 1e-6)
+                carterConst = R_CAM * R_CAM * R_CAM * R_CAM * (initial.dTheta * initial.dTheta);
+            else
+                carterConst = R_CAM * R_CAM * R_CAM * R_CAM * (initial.dTheta * initial.dTheta) + (cosTheta * cosTheta) / (sinTheta * sinTheta) * angularMomentum * angularMomentum;
 
             TraceResult result = trace_ray(initial, angularMomentum, carterConst, DLAMBDA, MAX_STEPS);
 
@@ -275,10 +281,15 @@ void *render_rows(void *arg)
                 double u = fmod(result.finalState.angle, 2 * PI) / (2 * PI);
                 if (u < 0)
                     u += 1.0;
-                double v = y / (double)HEIGHT;
+
+                double v = fmax(0.0, fmin(1.0, result.finalState.theta / PI));
 
                 int texX = (int)(u * data->starfield->width);
                 int texY = (int)(v * data->starfield->height);
+
+                texX = (int)fmax(0, fmin(texX, data->starfield->width - 1));
+                texY = (int)fmax(0, fmin(texY, data->starfield->height - 1));
+
                 color = GetImageColor(*data->starfield, texX, texY);
             }
 
