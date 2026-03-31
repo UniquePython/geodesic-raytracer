@@ -215,7 +215,7 @@ int main(void)
                     .dTheta = sin(ay) / R_CAM,
                 };
 
-                double carterConst = R_CAM * R_CAM * R_CAM * R_CAM * (initial.dTheta * initial.dTheta);
+                double carterConst = R_CAM * R_CAM * R_CAM * R_CAM * (initial.dTheta * initial.dTheta) + cos(initial.theta) * cos(initial.theta) * angularMomentum * angularMomentum;
 
                 TraceResult result = trace_ray(initial, angularMomentum, carterConst, DLAMBDA, MAX_STEPS);
 
