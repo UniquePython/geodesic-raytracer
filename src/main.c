@@ -272,11 +272,15 @@ void *render_rows(void *arg)
                     diskColor = (Color){(unsigned char)(255 - s * 155), (unsigned char)(70 - s * 70), 0, 255};
                 }
 
-                double brightness = 1.0 / sqrt(r);
+                double brightness = 1.0 / pow(r, 0.5);
                 brightness = fmax(0.1, fmin(1.0, brightness));
-                diskColor.r = (unsigned char)(diskColor.r * brightness);
-                diskColor.g = (unsigned char)(diskColor.g * brightness);
-                diskColor.b = (unsigned char)(diskColor.b * brightness);
+
+                double redshiftFactor = sqrt(1.0 - RS / r);
+                redshiftFactor = fmax(0.1, redshiftFactor); // prevent total blackout
+
+                diskColor.r = (unsigned char)(diskColor.r * redshiftFactor * brightness);
+                diskColor.g = (unsigned char)(diskColor.g * redshiftFactor * brightness);
+                diskColor.b = (unsigned char)(diskColor.b * redshiftFactor * brightness);
 
                 color = diskColor;
             }
