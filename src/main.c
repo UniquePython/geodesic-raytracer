@@ -7,6 +7,18 @@
 #define WIDTH 900  // Window width
 #define HEIGHT 900 // Window height
 
+#include <pthread.h>
+
+#define NUM_THREADS 20 // My machine has 20 cores
+
+typedef struct
+{
+    int startRow;
+    int endRow;
+    Color *pixelBuffer;
+    Image *starfield;
+} ThreadData;
+
 typedef struct ray_state
 {
     double radius;  // Radius of ray in polar coordinates
@@ -175,6 +187,95 @@ TraceResult trace_ray(RayState initial, double angularMomentum, double carterCon
     return result;
 }
 
+void *render_rows(void *arg)
+{
+    ThreadData *data = (ThreadData *)arg;
+
+    for (int y = data->startRow; y < data->endRow; y++)
+    {
+        for (int x = 0; x < WIDTH; x++)
+        {
+            double screenX = (x - WIDTH / 2.0) / WIDTH;
+            double screenY = (y - HEIGHT / 2.0) / HEIGHT;
+
+            double ax = screenX * FOV;
+            double ay = screenY * FOV;
+            double angularMomentum = R_CAM * sin(ax);
+
+            double cameraInclination = CAM_INCLINATION * (PI / 180.0);
+
+            RayState initial = {
+                .radius = R_CAM,
+                .angle = 0.0,
+                .theta = (PI / 2.0) - cameraInclination,
+                .dRadius = -1.0,
+                .dTheta = sin(ay) / R_CAM,
+            };
+
+            double sinTheta = sin(initial.theta);
+            double cosTheta = cos(initial.theta);
+            double carterConst = R_CAM * R_CAM * R_CAM * R_CAM * (initial.dTheta * initial.dTheta) + (cosTheta * cosTheta) / (sinTheta * sinTheta) * angularMomentum * angularMomentum;
+
+            TraceResult result = trace_ray(initial, angularMomentum, carterConst, DLAMBDA, MAX_STEPS);
+
+            Color color;
+            if (result.outcome == CAPTURED)
+            {
+                color = BLACK;
+            }
+            else if (result.outcome == HIT_DISK)
+            {
+                double r = result.finalState.radius;
+                double innerEdge = 3.0 * RS;
+                double outerEdge = 15.0 * RS;
+
+                double t = (r - innerEdge) / (outerEdge - innerEdge);
+                t = fmax(0.0, fmin(1.0, t));
+
+                Color diskColor;
+                if (t < 0.25)
+                {
+                    double s = t / 0.25;
+                    diskColor = (Color){255, (unsigned char)(255 - s * 55), (unsigned char)(255 - s * 255), 255};
+                }
+                else if (t < 0.6)
+                {
+                    double s = (t - 0.25) / 0.35;
+                    diskColor = (Color){255, (unsigned char)(200 - s * 130), 0, 255};
+                }
+                else
+                {
+                    double s = (t - 0.6) / 0.4;
+                    diskColor = (Color){(unsigned char)(255 - s * 155), (unsigned char)(70 - s * 70), 0, 255};
+                }
+
+                double brightness = 1.0 / sqrt(r);
+                brightness = fmax(0.1, fmin(1.0, brightness));
+                diskColor.r = (unsigned char)(diskColor.r * brightness);
+                diskColor.g = (unsigned char)(diskColor.g * brightness);
+                diskColor.b = (unsigned char)(diskColor.b * brightness);
+
+                color = diskColor;
+            }
+            else
+            {
+                double u = fmod(result.finalState.angle, 2 * PI) / (2 * PI);
+                if (u < 0)
+                    u += 1.0;
+                double v = y / (double)HEIGHT;
+
+                int texX = (int)(u * data->starfield->width);
+                int texY = (int)(v * data->starfield->height);
+                color = GetImageColor(*data->starfield, texX, texY);
+            }
+
+            data->pixelBuffer[(HEIGHT - 1 - y) * WIDTH + x] = color;
+        }
+    }
+
+    return NULL;
+}
+
 int main(void)
 {
     InitWindow(WIDTH, HEIGHT, "Geodesic Ray Tracing in Curved Spacetime");
@@ -189,110 +290,34 @@ int main(void)
         return 1;
     }
 
-    int currentRow = 0;
+    static Color pixelBuffer[WIDTH * HEIGHT];
+
+    bool rendered = false;
 
     while (!WindowShouldClose())
     {
-        if (currentRow < HEIGHT)
+        if (!rendered)
         {
-            BeginTextureMode(target);
-            for (int x = 0; x < WIDTH; x++)
+            pthread_t threads[NUM_THREADS];
+            ThreadData threadData[NUM_THREADS];
+
+            int rowsPerThread = HEIGHT / NUM_THREADS;
+
+            for (int i = 0; i < NUM_THREADS; i++)
             {
-                double screenX = (x - WIDTH / 2.0) / WIDTH;
-                double screenY = (currentRow - HEIGHT / 2.0) / HEIGHT;
-
-                double ax = screenX * FOV;
-                double ay = screenY * FOV;
-                double angularMomentum = R_CAM * sin(ax);
-
-                double cameraInclination = CAM_INCLINATION * (PI / 180.0);
-
-                RayState initial = {
-                    .radius = R_CAM,
-                    .angle = 0.0,
-                    .theta = (PI / 2.0) - cameraInclination,
-                    .dRadius = -1.0,
-                    .dTheta = sin(ay) / R_CAM,
-                };
-
-                double sinTheta = sin(initial.theta);
-                double cosTheta = cos(initial.theta);
-
-                double carterConst = R_CAM * R_CAM * R_CAM * R_CAM * (initial.dTheta * initial.dTheta) + (cosTheta * cosTheta) / (sinTheta * sinTheta) * angularMomentum * angularMomentum;
-
-                TraceResult result = trace_ray(initial, angularMomentum, carterConst, DLAMBDA, MAX_STEPS);
-
-                Color color;
-                if (result.outcome == CAPTURED)
-                    color = BLACK;
-                else if (result.outcome == HIT_DISK)
-                {
-                    double r = result.finalState.radius;
-                    double innerEdge = 3.0 * RS;
-                    double outerEdge = 15.0 * RS;
-
-                    // normalized 0 (inner, hot) to 1 (outer, cool)
-                    double t = (r - innerEdge) / (outerEdge - innerEdge);
-                    t = fmax(0.0, fmin(1.0, t)); // clamp
-
-                    // heat gradient: white-blue -> yellow -> orange -> dim red
-                    Color diskColor;
-                    if (t < 0.25)
-                    {
-                        // white-blue to yellow
-                        double s = t / 0.25;
-                        diskColor = (Color){
-                            (unsigned char)(255),
-                            (unsigned char)(255 - s * 55),
-                            (unsigned char)(255 - s * 255),
-                            255};
-                    }
-                    else if (t < 0.6)
-                    {
-                        // yellow to orange
-                        double s = (t - 0.25) / 0.35;
-                        diskColor = (Color){
-                            (unsigned char)(255),
-                            (unsigned char)(200 - s * 130),
-                            0,
-                            255};
-                    }
-                    else
-                    {
-                        // orange to dim red
-                        double s = (t - 0.6) / 0.4;
-                        diskColor = (Color){
-                            (unsigned char)(255 - s * 155),
-                            (unsigned char)(70 - s * 70),
-                            0,
-                            255};
-                    }
-
-                    // brightness falls off sharply with radius at the rate of 1/sqrt(r)
-                    double brightness = pow(innerEdge / r, 0.5);
-                    brightness = fmax(0.1, fmin(1.0, brightness));
-
-                    diskColor.r = (unsigned char)(diskColor.r * brightness);
-                    diskColor.g = (unsigned char)(diskColor.g * brightness);
-                    diskColor.b = (unsigned char)(diskColor.b * brightness);
-                    color = diskColor;
-                }
-                else
-                {
-                    double u = fmod(result.finalState.angle, 2 * PI) / (2 * PI);
-                    if (u < 0)
-                        u += 1.0;
-                    double v = currentRow / (double)HEIGHT;
-
-                    int texX = (int)(u * starfield.width);
-                    int texY = (int)(v * starfield.height);
-                    color = GetImageColor(starfield, texX, texY);
-                }
-
-                DrawPixel(x, currentRow, color);
+                threadData[i].startRow = i * rowsPerThread;
+                threadData[i].endRow = (i == NUM_THREADS - 1) ? HEIGHT : (i + 1) * rowsPerThread;
+                threadData[i].starfield = &starfield;
+                threadData[i].pixelBuffer = pixelBuffer;
+                pthread_create(&threads[i], NULL, render_rows, &threadData[i]);
             }
-            EndTextureMode();
-            currentRow++;
+
+            for (int i = 0; i < NUM_THREADS; i++)
+                pthread_join(threads[i], NULL);
+
+            UpdateTexture(target.texture, pixelBuffer);
+
+            rendered = true;
         }
 
         BeginDrawing();
