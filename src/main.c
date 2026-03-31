@@ -142,7 +142,10 @@ TraceResult trace_ray(RayState initial, double angularMomentum, double carterCon
     for (int stepsTaken = 0; stepsTaken < maxSteps; stepsTaken++)
     {
         prevState = state;
-        state = rk4_step(state, angularMomentum, carterConst, dLambda);
+
+        double adaptiveLambda = dLambda * fmin(1.0, (state.radius - RS) / (5.0 * RS));
+        adaptiveLambda = fmax(0.01, adaptiveLambda);
+        state = rk4_step(state, angularMomentum, carterConst, adaptiveLambda);
 
         bool crossedEventHorizon = state.radius <= RS;
         bool escapedToInfinity = state.radius > R_MAX;
